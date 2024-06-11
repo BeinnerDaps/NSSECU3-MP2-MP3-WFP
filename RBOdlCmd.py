@@ -49,10 +49,8 @@ def run_tool(tool, path, output_path, obfuscationstringmap_path, all_key_values,
         if output_path:
             command.extend(['-o', output_path])
 
-    # Print the command for debugging
     print(f"Running command: {' '.join(command)}")
 
-    # Execute the command
     try:
         result = subprocess.run(command, check=True)
         print(result)
