@@ -22,7 +22,7 @@ def writeCSV(df):
         worksheet = writer.sheets['Parsed']
         for col in df:
             colWidth = max(df[col].astype(str).map(len).max(),len(col))
-            colWidth = 100 if colWidth > 200 else colWidth
+            colWidth = 100 if colWidth > 100 else colWidth
             colIndex = df.columns.get_loc(col)
             worksheet.set_column(colIndex, colIndex, colWidth)
     print("DataFrame has been written to 'output.xlsx'")
