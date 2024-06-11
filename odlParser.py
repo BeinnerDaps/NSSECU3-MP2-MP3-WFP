@@ -9,20 +9,23 @@ def readCSV(file):
 
 def parseDatetime(df_dt):
     df_dt['Timestamp'] = df_dt['Timestamp'].str.split('.').str[0]
-    print(df_dt['Timestamp'].head(20))
-    return parseCodeFile(df_dt.copy())
+    return parseFunction(df_dt.copy())
 
-def parseCodeFile(df_codefile):
-    pass
-    return parseFunction(df_codefile.copy())
-
-def parseFunction(df_function):
-    pass
-    return writeCSV(df_function.copy())
+def parseFunction(df_func):
+    df_func['Function'] = df_func['Function'].str.replace(r'(?<!^)(?=[A-Z])', ' ', regex=True).str.replace('::', ' -')
+    return writeCSV(df_func.copy())
 
 def writeCSV(df):
-
-    pass
+    with pd.ExcelWriter('output.xlsx', engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Parsed')
+        workbook = writer.book
+        worksheet = writer.sheets['Parsed']
+        for col in df:
+            colWidth = max(df[col].astype(str).map(len).max(),len(col))
+            colWidth = 100 if colWidth > 200 else colWidth
+            colIndex = df.columns.get_loc(col)
+            worksheet.set_column(colIndex, colIndex, colWidth)
+    print("DataFrame has been written to 'output.xlsx'")
 
 def main():
     parser = argparse.ArgumentParser()
