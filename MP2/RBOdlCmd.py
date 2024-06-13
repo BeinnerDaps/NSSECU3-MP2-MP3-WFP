@@ -7,6 +7,38 @@ import sys
 import pandas as pd
 import tempfile
 
+def readCSV(file, output_path):
+    try:
+        df = pd.read_csv(file)
+        df.dropna(how="all", inplace=True)
+        df.reset_index(drop=True, inplace=True)
+        df.drop(['File_Index'], axis=1, inplace=True)
+        return parseDatetime(df.copy(), output_path)
+    except PermissionError as e:
+        print(f"Permission Denied: {e}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+def parseDatetime(df_dt, output_path):
+    df_dt['Timestamp'] = df_dt['Timestamp'].str.split('.').str[0]
+    return parseFunction(df_dt.copy(), output_path)
+
+def parseFunction(df_func, output_path):
+    df_func['Function'] = df_func['Function'].str.replace(r'(?<!^)(?=[A-Z])', ' ', regex=True).str.replace('::', ' -')
+    return writeCSV(df_func.copy(), output_path)
+
+def writeCSV(df, output_path):
+    output = os.path.join(output_path, 'output.xlsx')
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        df.to_excel(writer, index=False, sheet_name='Parsed')
+        worksheet = writer.sheets['Parsed']
+        for col in df:
+            colWidth = max(df[col].astype(str).map(len).max(), len(col))
+            colWidth = 100 if colWidth > 100 else colWidth
+            colIndex = df.columns.get_loc(col)
+            worksheet.set_column(colIndex, colIndex, colWidth)
+    print(f"DataFrame has been written to {output}")
+
 def run_tool(tool, path, output_path, obfuscationstringmap_path, all_key_values, all_data):
     if tool == 'odl':
         with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_csv:
@@ -46,38 +78,6 @@ def runParsers(commands):
             subprocess.run(command, check=True)
     except subprocess.CalledProcessError as e:
         print(f"Error running Odl.py: {e}")
-
-def readCSV(file, output_path):
-    try:
-        df = pd.read_csv(file)
-        df.dropna(how="all", inplace=True)
-        df.reset_index(drop=True, inplace=True)
-        df.drop(['File_Index'], axis=1, inplace=True)
-        return parseDatetime(df.copy(), output_path)
-    except PermissionError as e:
-        print(f"Permission Denied: {e}")
-    except Exception as e:
-        print(f"An error occurred: {e}")
-
-def parseDatetime(df_dt, output_path):
-    df_dt['Timestamp'] = df_dt['Timestamp'].str.split('.').str[0]
-    return parseFunction(df_dt.copy(), output_path)
-
-def parseFunction(df_func, output_path):
-    df_func['Function'] = df_func['Function'].str.replace(r'(?<!^)(?=[A-Z])', ' ', regex=True).str.replace('::', ' -')
-    return writeCSV(df_func.copy(), output_path)
-
-def writeCSV(df, output_path):
-    output = os.path.join(output_path, 'output.xlsx')
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Parsed')
-        worksheet = writer.sheets['Parsed']
-        for col in df:
-            colWidth = max(df[col].astype(str).map(len).max(), len(col))
-            colWidth = 100 if colWidth > 100 else colWidth
-            colIndex = df.columns.get_loc(col)
-            worksheet.set_column(colIndex, colIndex, colWidth)
-    print(f"DataFrame has been written to {output}")
 
 def main():
     parser = argparse.ArgumentParser(description="Wrapper script to run odl.py or RBCmd.exe")
