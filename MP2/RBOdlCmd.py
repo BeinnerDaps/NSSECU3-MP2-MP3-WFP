@@ -41,7 +41,7 @@ def writeCSV(df, output_path):
 
 def run_tool(tool, path, output_path, obfuscationstringmap_path, all_key_values, all_data):
     if tool == 'odl':
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_csv:
+        with tempfile.NamedTemporaryFile(delete=True, suffix=".csv") as temp_csv:
             output_file = temp_csv.name
         commands = [['python', 'odl.py', path, '-o', output_file]]
         if obfuscationstringmap_path:
@@ -51,33 +51,35 @@ def run_tool(tool, path, output_path, obfuscationstringmap_path, all_key_values,
         if all_data:
             commands[0].append('-d')
     elif tool == 'rb':
+        new_path = os.path.join(r"C:\$Recycle.Bin", path)
         new_folder = os.path.join(output_path, 'RBCMetaData')
         try:
             os.makedirs(new_folder)
             print(f"Directory {new_folder} created successfully.")
         except OSError as error:
-            print(f"Error creating directory {new_folder}: {error}")
+            print(error)
 
         commands = [
-            ['cmd', '/c', f'cd {path}'],
-            ['cmd', '/c', f'copy {os.path.join(path, "$I*")} {new_folder}'],
+            ['cd', new_path],
+            ['copy', "$I*", new_folder],
+            ['cd', output_path],
             ['RBCmd.exe', '-d', new_folder, '--csv', output_path]
         ]
 
-    print("Running commands:")
-    for cmd in commands:
-       if cmd: print(' '.join(cmd))
     runParsers(commands)
-
     if tool == 'odl':
         readCSV(output_file, output_path)
 
 def runParsers(commands):
     try:
         for command in commands:
-            subprocess.run(command, check=True)
+            print('Running command: {' '.join(command)}')
+            if command[0] == 'cd':
+                os.chdir(command[1])
+            else:
+                subprocess.run(command, check=True, shell=True)
     except subprocess.CalledProcessError as e:
-        print(f"Error running Odl.py: {e}")
+        print(e)
 
 def main():
     parser = argparse.ArgumentParser(description="Wrapper script to run odl.py or RBCmd.exe")
