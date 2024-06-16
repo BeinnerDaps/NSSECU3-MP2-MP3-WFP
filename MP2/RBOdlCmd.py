@@ -7,42 +7,66 @@ import sys
 import pandas as pd
 import tempfile
 
-def readCSV(file, output_path):
+def readCSV(file, output_path, path, tool):
     try:
         df = pd.read_csv(file)
         df.dropna(how="all", inplace=True)
         df.reset_index(drop=True, inplace=True)
-        df.drop(['File_Index'], axis=1, inplace=True)
-        return parseDatetime(df.copy(), output_path)
+        if tool == 'odl':
+            return parseOdl(df.copy(), output_path, path)
+        elif tool == 'rb':
+            return parseRb(df.copy(), output_path)
     except PermissionError as e:
         print(f"Permission Denied: {e}")
     except Exception as e:
         print(f"An error occurred: {e}")
 
-def parseDatetime(df_dt, output_path):
-    df_dt['Timestamp'] = df_dt['Timestamp'].str.split('.').str[0]
-    return parseFunction(df_dt.copy(), output_path)
+def parseOdl(df_odl, output_path, path):
+    try:
+        df_odl.drop(['File_Index'], axis=1, inplace=True)
+        df_odl['Filename'] = df_odl['Filename'].apply(lambda x: os.path.join(path, x))
+        df_odl['Timestamp'] = df_odl['Timestamp'].str.split('.').str[0]
+        df_odl['Function'] = df_odl['Function'].str.replace(r'(?<!^)(?=[A-Z])', ' ', regex=True).str.replace('::', ' -')
+        df_odl = move_column_to_first(df_odl, 'Timestamp')
+        df_odl = df_odl.sort_values(by='Timestamp', ascending=False)
+        return writeCSV(df_odl.copy(), output_path, 'Parsed_odl.xlsx')
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
-def parseFunction(df_func, output_path):
-    df_func['Function'] = df_func['Function'].str.replace(r'(?<!^)(?=[A-Z])', ' ', regex=True).str.replace('::', ' -')
-    return writeCSV(df_func.copy(), output_path)
+def parseRb(df_rb, output_path):
+    try:
+        df_rb = move_column_to_first(df_rb, 'DeletedOn')
+        df_rb = df_rb.sort_values(by='DeletedOn', ascending=False)
+        return writeCSV(df_rb.copy(), output_path, 'Parsed_rb.xlsx')
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
-def writeCSV(df, output_path):
-    output = os.path.join(output_path, 'output.xlsx')
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        df.to_excel(writer, index=False, sheet_name='Parsed')
-        worksheet = writer.sheets['Parsed']
-        for col in df:
-            colWidth = max(df[col].astype(str).map(len).max(), len(col))
-            colWidth = 100 if colWidth > 100 else colWidth
-            colIndex = df.columns.get_loc(col)
-            worksheet.set_column(colIndex, colIndex, colWidth)
-    print(f"DataFrame has been written to {output}")
+def move_column_to_first(df, column_name):
+    if column_name in df.columns:
+        columns = [column_name] + [col for col in df.columns if col != column_name]
+        df = df[columns]
+    return df
+
+def writeCSV(df, output_path, filename):
+    try:
+        output = os.path.join(output_path, filename)
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Parsed')
+            worksheet = writer.sheets['Parsed']
+            for col in df:
+                colWidth = max(df[col].astype(str).map(len).max(), len(col))
+                colWidth = 100 if colWidth > 100 else colWidth
+                colIndex = df.columns.get_loc(col)
+                worksheet.set_column(colIndex, colIndex, colWidth)
+        print(f"DataFrame has been written to {output}")
+    except Exception as e:
+        print(f"An error occurred: {e}")
 
 def run_tool(tool, path, output_path, obfuscationstringmap_path, all_key_values, all_data):
+    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_csv:
+        output_file = temp_csv.name
+    os.chmod(output_file, 0o600)
     if tool == 'odl':
-        with tempfile.NamedTemporaryFile(delete=True, suffix=".csv") as temp_csv:
-            output_file = temp_csv.name
         commands = [['python', 'odl.py', path, '-o', output_file]]
         if obfuscationstringmap_path:
             commands[0].extend(['-s', obfuscationstringmap_path])
@@ -51,29 +75,27 @@ def run_tool(tool, path, output_path, obfuscationstringmap_path, all_key_values,
         if all_data:
             commands[0].append('-d')
     elif tool == 'rb':
-        new_path = os.path.join(r"C:\$Recycle.Bin", path)
+        path = os.path.join(r"C:\$Recycle.Bin", path)
         new_folder = os.path.join(output_path, 'RBCMetaData')
         try:
             os.makedirs(new_folder)
             print(f"Directory {new_folder} created successfully.")
         except OSError as error:
             print(error)
-
         commands = [
-            ['cd', new_path],
+            ['cd', path],
             ['copy', "$I*", new_folder],
             ['cd', output_path],
-            ['RBCmd.exe', '-d', new_folder, '--csv', output_path]
+            ['RBCmd.exe', '-d', new_folder, '--csvf', output_file]
         ]
 
     runParsers(commands)
-    if tool == 'odl':
-        readCSV(output_file, output_path)
+    readCSV(output_file, output_path, path, tool)
 
 def runParsers(commands):
     try:
         for command in commands:
-            print('Running command: {' '.join(command)}')
+            print(f'Running command: {' '.join(command)}')
             if command[0] == 'cd':
                 os.chdir(command[1])
             else:
