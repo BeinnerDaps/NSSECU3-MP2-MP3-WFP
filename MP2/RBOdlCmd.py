@@ -1,13 +1,32 @@
 #!/usr/bin/env python3
 
+import pandas as pd
 import argparse
 import subprocess
 import os
 import sys
-import pandas as pd
 import tempfile
+import ctypes
+
+def is_admin():
+    """Check if the script is running with administrative privileges."""
+    try:
+        return ctypes.windll.shell32.IsUserAnAdmin()
+    except:
+        return False
+
+def run_as_admin():
+    """Relaunch the script with administrative privileges."""
+    script = os.path.abspath(sys.argv[0])
+    params = ' '.join([f'"{arg}"' for arg in sys.argv[1:]])
+    try:
+        subprocess.run(["runas", "/user:Administrator", f'python {script} {params}'], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Failed to elevate to admin: {e}")
+        sys.exit(1)
 
 def readCSV(file, output_path, path, tool):
+    """reading CSV file for Parsing"""
     try:
         df = pd.read_csv(file)
         df.dropna(how="all", inplace=True)
@@ -22,6 +41,7 @@ def readCSV(file, output_path, path, tool):
         print(f"An error occurred: {e}")
 
 def parseOdl(df_odl, output_path, path):
+    """Parsing ODL file"""
     try:
         df_odl.drop(['File_Index'], axis=1, inplace=True)
         df_odl['Filename'] = df_odl['Filename'].apply(lambda x: os.path.join(path, x))
@@ -34,18 +54,13 @@ def parseOdl(df_odl, output_path, path):
         print(f"An error occurred: {e}")
 
 def parseRb(df_rb, output_path):
+    """Parsing RBCmd file"""
     try:
         df_rb = move_column_to_first(df_rb, 'DeletedOn')
         df_rb = df_rb.sort_values(by='DeletedOn', ascending=False)
         return writeCSV(df_rb.copy(), output_path, 'Parsed_rb.xlsx')
     except Exception as e:
         print(f"An error occurred: {e}")
-
-def move_column_to_first(df, column_name):
-    if column_name in df.columns:
-        columns = [column_name] + [col for col in df.columns if col != column_name]
-        df = df[columns]
-    return df
 
 def writeCSV(df, output_path, filename):
     try:
@@ -61,6 +76,12 @@ def writeCSV(df, output_path, filename):
         print(f"DataFrame has been written to {output}")
     except Exception as e:
         print(f"An error occurred: {e}")
+
+def move_column_to_first(df, column_name):
+    if column_name in df.columns:
+        columns = [column_name] + [col for col in df.columns if col != column_name]
+        df = df[columns]
+    return df
 
 def run_tool(tool, path, output_path, obfuscationstringmap_path, all_key_values, all_data):
     with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_csv:
@@ -104,6 +125,12 @@ def runParsers(commands):
         print(e)
 
 def main():
+
+    if not is_admin():
+        print("Not running as admin, attempting to relaunch with admin privileges...")
+        run_as_admin()
+        return
+
     parser = argparse.ArgumentParser(description="Wrapper script to run odl.py or RBCmd.exe")
     parser.add_argument('tool', choices=['odl', 'rb'], help='Specify which tool to run: odl (odl.py) or rb (RBCmd.exe)')
     parser.add_argument('path', help='Path to folder with .odl logs for odl or Path to recycle bin with $I files for rb')
