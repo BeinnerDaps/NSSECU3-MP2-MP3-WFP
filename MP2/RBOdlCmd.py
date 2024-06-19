@@ -7,6 +7,7 @@ import os
 import sys
 import tempfile
 import ctypes
+import shutil
 
 def is_admin():
     """Check if the script is running with administrative privileges."""
@@ -107,16 +108,23 @@ def run_tool(tool, path, output_path, obfuscationstringmap_path, all_key_values,
             ['cd', path],
             ['copy', "$I*", new_folder],
             ['cd', output_path],
-            ['RBCmd.exe', '-d', new_folder, '--csvf', output_file]
+            ['RBCmd.exe', '-d', new_folder, '--csv', output_path]
         ]
 
     runParsers(commands)
-    readCSV(output_file, output_path, path, tool)
-
+    if tool == 'odl':
+        readCSV(output_file, output_path, path, tool)
+    elif tool == 'rb':
+        for file in os.listdir(output_path):
+            if file.endswith('.csv'):
+                csv_path = os.path.join(output_path, file)
+            readCSV(csv_path, output_path, path, tool)
+        os.remove(csv_path)
+        shutil.rmtree('RBCMetaData')
 def runParsers(commands):
     try:
         for command in commands:
-            print(f'Running command: {' '.join(command)}')
+            print(f'Running command: {" ".join(command)}')
             if command[0] == 'cd':
                 os.chdir(command[1])
             else:
