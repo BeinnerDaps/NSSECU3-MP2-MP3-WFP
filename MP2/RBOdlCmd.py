@@ -140,7 +140,9 @@ def main():
     parser.add_argument('-d', '--all_data', action='store_true', help='Show all data (off by default)')
     args = parser.parse_args()
 
-    if args.output_path is None:
+    if args.output_path:
+        output_path = args.output_path
+    else:
         output_path = os.path.dirname(os.path.abspath(sys.argv[0]))
 
     run_tool(args.tool, args.path, output_path, args.obfuscationstringmap_path, args.all_key_values, args.all_data)
