@@ -92,7 +92,7 @@ def move_column_to_first(df, column_name):
 def run_tool(args):
     try:
         tool, path, output_path, obf, all_kval, all_data = args
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_csv:
+        with tempfile.NamedTemporaryFile(delete=True, suffix=".csv") as temp_csv:
             output_file = temp_csv.name
             temp_directory = os.path.dirname(output_file)
 
