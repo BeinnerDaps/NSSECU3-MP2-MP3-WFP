@@ -36,8 +36,8 @@ def readCSV(file, output_path, path, tool):
         df.reset_index(drop=True, inplace=True)
         if tool == 'odl':
             return parseOdl(df.copy(), output_path, path)
-        elif tool == 'rb':
-            return parseRb(df.copy(), output_path, path)
+        elif tool == 'rbc':
+            return parseRbc(df.copy(), output_path, path)
     except PermissionError as e:
         print(f"Permission Denied: {e}")
     except Exception as e:
@@ -56,14 +56,14 @@ def parseOdl(df_odl, output_path, path):
     except Exception as e:
         print(f"An error occurred: {e}")
 
-def parseRb(df_rb, output_path, path):
+def parseRbc(df_rbc, output_path, path):
     """Parsing RBCmd file"""
     try:
-        df_rb['UserSID'] = f'{path}'
-        df_rb = move_column_to_first(df_rb, 'UserSID')
-        df_rb = move_column_to_first(df_rb, 'DeletedOn')
-        df_rb = df_rb.sort_values(by='DeletedOn', ascending=False)
-        return writeCSV(df_rb.copy(), output_path, 'Parsed_rb.xlsx')
+        df_rbc['UserSID'] = f'{path}'
+        df_rbc = move_column_to_first(df_rbc, 'UserSID')
+        df_rbc = move_column_to_first(df_rbc, 'DeletedOn')
+        df_rbc = df_rbc.sort_values(by='DeletedOn', ascending=False)
+        return writeCSV(df_rbc.copy(), output_path, 'Parsed_rbc.xlsx')
     except Exception as e:
         print(f"An error occurred: {e}")
 
@@ -81,7 +81,7 @@ def writeCSV(df, output_path, filename):
                 worksheet.set_column(colIndex, colIndex, colWidth)
         print(f"DataFrame has been written to {output}")
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"An error occurred on writeCSV: {e}")
 
 def move_column_to_first(df, column_name):
     if column_name in df.columns:
@@ -90,37 +90,40 @@ def move_column_to_first(df, column_name):
     return df
 
 def run_tool(args):
-    tool, path, output_path, obf, all_kval, all_data = args
-    with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_csv:
-        output_file = temp_csv.name
-        temp_directory = os.path.dirname(output_file)
+    try:
+        tool, path, output_path, obf, all_kval, all_data = args
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_csv:
+            output_file = temp_csv.name
+            temp_directory = os.path.dirname(output_file)
 
-    if 'odl' == tool:
-        odl = ['python', 'odl.py', path, '-o', output_file]
-        if obf: odl.extend(['-s', obf])
-        if all_kval: odl.append('-k')
-        if all_data: odl.append('-d')
-        commands = [odl]
+        if 'odl' == tool:
+            odl = ['python', 'odl.py', path, '-o', output_file]
+            if obf: odl.extend(['-s', obf])
+            if all_kval: odl.append('-k')
+            if all_data: odl.append('-d')
+            commands = [odl]
 
-    if 'rb' == tool:
-        path = os.path.join(r"C:\$Recycle.Bin", path)
-        new_folder = os.path.join(output_path, 'RBCMetaData')
-        temp_directory = output_path
-        try:
-            os.makedirs(new_folder)
-            print(f"Directory {new_folder} created successfully.")
-        except OSError as error:
-            print(error)
+        if 'rbc' == tool:
+            path = os.path.join(r"C:\$Recycle.Bin", path)
+            new_folder = os.path.join(output_path, 'RBCMetaData')
+            temp_directory = output_path
+            try:
+                os.makedirs(new_folder)
+                print(f"Directory {new_folder} created successfully.")
+            except OSError as error:
+                print(error)
 
-        commands = [
-            ['cd', path],
-            ['copy', "$I*", new_folder],
-            ['cd', defaultpath()],
-            [r'.\RBCmd.exe', '-d', new_folder, '--csv', temp_directory]
-        ]
+            commands = [
+                ['cd', path],
+                ['copy', "$I*", new_folder],
+                ['cd', defaultpath()],
+                [r'.\RBCmd.exe', '-d', new_folder, '--csv', temp_directory]
+            ]
 
-    runParsers(commands, temp_directory, output_path, path, tool)
-    if tool == 'rb': shutil.rmtree('RBCMetaData')
+        runParsers(commands, temp_directory, output_path, path, tool)
+        if tool == 'rbc': shutil.rmtree('RBCMetaData')
+    except Exception as e:
+        print(f"An error occurred on run_tool: {e}")
 
 def runParsers(commands, directory, output_path, path, tool):
     try:
@@ -139,13 +142,14 @@ def runParsers(commands, directory, output_path, path, tool):
         output = result.stdout.strip()
         filename = os.path.basename(output)
         output_file = os.path.join(directory, filename)
-        print(f'Filename: {filename}')
-        print(f'directory: {output_file}')
+
         readCSV(output_file, output_path, path, tool)
         os.remove(output_file)
 
     except subprocess.CalledProcessError as e:
-        print(e)
+        print(f"Command Subprocess Error on runParser: {e}")
+    except Exception as e:
+        print(f"An error occurred on runParser: {e}")
 
 def defaultpath():
     return os.path.dirname(os.path.abspath(sys.argv[0]))
@@ -157,12 +161,12 @@ def main():
         return
 
     parser = argparse.ArgumentParser(description="Wrapper script to run odl.py or RBCmd.exe")
-    parser.add_argument('-t', '--tool', metavar=('tool1', 'tool2'), nargs='*', help='Specify which tool to run: odl (odl.py), rb (RBCmd.exe)', choices=['odl','rb'], default=None)
-    parser.add_argument('-p', '--path', metavar=('path1', 'path2'), nargs='*', help='Path to .odl logs folder for odl or user SID for rb', default=None)
+    parser.add_argument('-t', '--tool', metavar=('tool1', 'tool2'), nargs='*', help='Specify which tool to run: odl (odl.py), rbc (RBCmd.exe)', choices=['odl','rbc'], default=None)
+    parser.add_argument('-p', '--path', metavar=('path1', 'path2'), nargs='*', help='Path to .odl logs folder for odl or user SID for rbc', default=None)
     parser.add_argument('-o', '--output_path', help='Path to output', default=None)
     parser.add_argument('-s', '--obfstrmap', help='Path to ObfuscationStringMap.txt (if not in odl_folder)', default=None)
-    parser.add_argument('-k', '--all_key_values', action='store_true', help='For repeated keys in ObfuscationMap, get all values | delimited (off by default)', default=False)
-    parser.add_argument('-d', '--all_data', action='store_true', help='Show all data (off by default)', default=False)
+    parser.add_argument('-k', '--all_key_values', action='store_true', help='For repeated keys in ObfuscationMap, get all values | delimited (off by default)', default=None)
+    parser.add_argument('-d', '--all_data', action='store_true', help='Show all data (off by default)', default=None)
     args = parser.parse_args()
 
     tools = args.tool
@@ -175,8 +179,11 @@ def main():
     for tool, path in zip(tools, paths):
         arguments.append([tool, path, output_path, args.obfstrmap, args.all_key_values, args.all_data])
 
-    with ThreadPoolExecutor() as executor:
-        list(tqdm(executor.map(run_tool, arguments), total=len(arguments), desc="Processing files"))
+    try:
+        with ThreadPoolExecutor() as executor:
+            list(tqdm(executor.map(run_tool, arguments), total=len(arguments), desc="Processing files"))
+    except Exception as e:
+        print(f"A Threading error occurred: {e}")
 
 if __name__ == "__main__":
     main()
