@@ -1,6 +1,5 @@
 #!/usr/bin/env python3
 
-import pandas as pd
 import argparse
 import subprocess
 import os
@@ -8,6 +7,9 @@ import sys
 import tempfile
 import ctypes
 import shutil
+import pandas as pd
+from tqdm import tqdm
+from concurrent.futures import ThreadPoolExecutor
 
 def is_admin():
     """Check if the script is running with administrative privileges."""
@@ -35,7 +37,7 @@ def readCSV(file, output_path, path, tool):
         if tool == 'odl':
             return parseOdl(df.copy(), output_path, path)
         elif tool == 'rb':
-            return parseRb(df.copy(), output_path)
+            return parseRb(df.copy(), output_path, path)
     except PermissionError as e:
         print(f"Permission Denied: {e}")
     except Exception as e:
@@ -54,9 +56,11 @@ def parseOdl(df_odl, output_path, path):
     except Exception as e:
         print(f"An error occurred: {e}")
 
-def parseRb(df_rb, output_path):
+def parseRb(df_rb, output_path, path):
     """Parsing RBCmd file"""
     try:
+        df_rb['UserSID'] = f'{path}'
+        df_rb = move_column_to_first(df_rb, 'UserSID')
         df_rb = move_column_to_first(df_rb, 'DeletedOn')
         df_rb = df_rb.sort_values(by='DeletedOn', ascending=False)
         return writeCSV(df_rb.copy(), output_path, 'Parsed_rb.xlsx')
@@ -64,6 +68,7 @@ def parseRb(df_rb, output_path):
         print(f"An error occurred: {e}")
 
 def writeCSV(df, output_path, filename):
+    """Writing RBCmd or Odl file"""
     try:
         output = os.path.join(output_path, filename)
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -84,76 +89,94 @@ def move_column_to_first(df, column_name):
         df = df[columns]
     return df
 
-def run_tool(tool, path, output_path, obfuscationstringmap_path, all_key_values, all_data):
+def run_tool(args):
+    tool, path, output_path, obf, all_kval, all_data = args
     with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_csv:
         output_file = temp_csv.name
-    os.chmod(output_file, 0o600)
-    if tool == 'odl':
-        commands = [['python', 'odl.py', path, '-o', output_file]]
-        if obfuscationstringmap_path:
-            commands[0].extend(['-s', obfuscationstringmap_path])
-        if all_key_values:
-            commands[0].append('-k')
-        if all_data:
-            commands[0].append('-d')
-    elif tool == 'rb':
+        temp_directory = os.path.dirname(output_file)
+
+    if 'odl' == tool:
+        odl = ['python', 'odl.py', path, '-o', output_file]
+        if obf: odl.extend(['-s', obf])
+        if all_kval: odl.append('-k')
+        if all_data: odl.append('-d')
+        commands = [odl]
+
+    if 'rb' == tool:
         path = os.path.join(r"C:\$Recycle.Bin", path)
         new_folder = os.path.join(output_path, 'RBCMetaData')
+        temp_directory = output_path
         try:
             os.makedirs(new_folder)
             print(f"Directory {new_folder} created successfully.")
         except OSError as error:
             print(error)
+
         commands = [
             ['cd', path],
             ['copy', "$I*", new_folder],
-            ['cd', output_path],
-            ['RBCmd.exe', '-d', new_folder, '--csv', output_path]
+            ['cd', defaultpath()],
+            [r'.\RBCmd.exe', '-d', new_folder, '--csv', temp_directory]
         ]
 
-    runParsers(commands)
-    if tool == 'odl':
-        readCSV(output_file, output_path, path, tool)
-    elif tool == 'rb':
-        for file in os.listdir(output_path):
-            if file.endswith('.csv'):
-                csv_path = os.path.join(output_path, file)
-            readCSV(csv_path, output_path, path, tool)
-        os.remove(csv_path)
-        shutil.rmtree('RBCMetaData')
-def runParsers(commands):
+    runParsers(commands, temp_directory, output_path, path, tool)
+    if tool == 'rb': shutil.rmtree('RBCMetaData')
+
+def runParsers(commands, directory, output_path, path, tool):
     try:
         for command in commands:
             print(f'Running command: {" ".join(command)}')
             if command[0] == 'cd':
                 os.chdir(command[1])
             else:
-                subprocess.run(command, check=True, shell=True)
+                result = subprocess.run(command, capture_output=True, text=True, check=True, shell=True)
+
+        if result.returncode != 0:
+            print(f"Command failed with return code {result.returncode}")
+            print(f"Error output: {result.stderr}")
+            return None
+
+        output = result.stdout.strip()
+        filename = os.path.basename(output)
+        output_file = os.path.join(directory, filename)
+        print(f'Filename: {filename}')
+        print(f'directory: {output_file}')
+        readCSV(output_file, output_path, path, tool)
+        os.remove(output_file)
+
     except subprocess.CalledProcessError as e:
         print(e)
 
-def main():
+def defaultpath():
+    return os.path.dirname(os.path.abspath(sys.argv[0]))
 
+def main():
     if not is_admin():
         print("Not running as admin, attempting to relaunch with admin privileges...")
         run_as_admin()
         return
 
     parser = argparse.ArgumentParser(description="Wrapper script to run odl.py or RBCmd.exe")
-    parser.add_argument('tool', choices=['odl', 'rb'], help='Specify which tool to run: odl (odl.py) or rb (RBCmd.exe)')
-    parser.add_argument('path', help='Path to folder with .odl logs for odl or Path to recycle bin with $I files for rb')
+    parser.add_argument('-t', '--tool', metavar=('tool1', 'tool2'), nargs='*', help='Specify which tool to run: odl (odl.py), rb (RBCmd.exe)', choices=['odl','rb'], default=None)
+    parser.add_argument('-p', '--path', metavar=('path1', 'path2'), nargs='*', help='Path to .odl logs folder for odl or user SID for rb', default=None)
     parser.add_argument('-o', '--output_path', help='Path to output', default=None)
-    parser.add_argument('-s', '--obfuscationstringmap_path', help='Path to ObfuscationStringMap.txt (if not in odl_folder)', default=None)
-    parser.add_argument('-k', '--all_key_values', action='store_true', help='For repeated keys in ObfuscationMap, get all values | delimited (off by default)')
-    parser.add_argument('-d', '--all_data', action='store_true', help='Show all data (off by default)')
+    parser.add_argument('-s', '--obfstrmap', help='Path to ObfuscationStringMap.txt (if not in odl_folder)', default=None)
+    parser.add_argument('-k', '--all_key_values', action='store_true', help='For repeated keys in ObfuscationMap, get all values | delimited (off by default)', default=False)
+    parser.add_argument('-d', '--all_data', action='store_true', help='Show all data (off by default)', default=False)
     args = parser.parse_args()
 
-    if args.output_path:
-        output_path = args.output_path
-    else:
-        output_path = os.path.dirname(os.path.abspath(sys.argv[0]))
+    tools = args.tool
+    paths = args.path
+    output_path = args.output_path or defaultpath()
+    if not len(tools) == len(paths):
+        parser.error('Both --tools and --paths must be provided with the same number of values.')
 
-    run_tool(args.tool, args.path, output_path, args.obfuscationstringmap_path, args.all_key_values, args.all_data)
+    arguments = []
+    for tool, path in zip(tools, paths):
+        arguments.append([tool, path, output_path, args.obfstrmap, args.all_key_values, args.all_data])
+
+    with ThreadPoolExecutor() as executor:
+        list(tqdm(executor.map(run_tool, arguments), total=len(arguments), desc="Processing files"))
 
 if __name__ == "__main__":
     main()
