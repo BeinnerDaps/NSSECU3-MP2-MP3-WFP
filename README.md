@@ -26,7 +26,7 @@ arguments
 '-d <hive>', 	'--all_data' 	    - (ODL only) Show all data (off by default)
 
 (NOTE: If '--output_path' is not given, default directory will be exe directory)
-
+(NOTE: To get UserSID, refer to https://www.precysec.com/post/how-to-recover-deleted-files-windows-recycle-bin-forensics)
 
 examples:
 .\RBCmdOdlParser.exe -t odl -p "C:\Users\student\AppData\Local\Microsoft\OneDrive\logs\Business1" -d
