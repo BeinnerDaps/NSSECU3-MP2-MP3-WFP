@@ -21,9 +21,9 @@ arguments
 '-t'<tool>, 	'--tool' 		    - Specify which tool, choices: odl (odl.py) and/or rbc (RBCmd.exe)
 '-p <path>',	'--path' 		    - Path to ODL logs or Recycle Bin UserSID
 '-o <path>', 	'--output_path' 	- Path to output directory
-'-s <hive>', 	'--obfstrmap' 	    - Path to ObfuscationStringMap.txt or general.keynote if not in odl_folder (off by default)
-'-k <hive>', 	'--all_key_values' 	- For repeated keys in ObfuscationMap, get all values | delimited (off by default)
-'-d <hive>', 	'--all_data' 	    - Show all data (off by default)
+'-s <hive>', 	'--obfstrmap' 	    - (ODL only) Path to ObfuscationStringMap.txt or general.keynote if not in odl_folder (off by default)
+'-k <hive>', 	'--all_key_values' 	- (ODL only) For repeated keys in ObfuscationMap, get all values | delimited (off by default)
+'-d <hive>', 	'--all_data' 	    - (ODL only) Show all data (off by default)
 
 (NOTE: If '--output_path' is not given, default directory will be exe directory)
 
