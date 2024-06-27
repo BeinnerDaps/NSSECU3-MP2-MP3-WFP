@@ -1,0 +1,25 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: RBCmd
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Eric
+    family-names: Zimmerman
+    email: saericzimmerman@gmail.com
+    affiliation: SANS Institute
+  - given-names: Andrew 
+    family-names: Rathbun
+    email: digitalforensicsdiscord@gmail.com
+    affiliation: DFIR Definitive Compendium Project
+identifiers:
+  - type: url
+    value: 'https://github.com/EricZimmerman/RBCmd/tree/master'
+    description: Github Page
+  - type: url
+    value: 'https://ericzimmerman.github.io/#!index.md'
+    description: EZ Tools Download Page
