@@ -97,7 +97,7 @@ def run_tool(args):
             temp_directory = os.path.dirname(output_file)
 
         if 'odl' == tool:
-            odl = ['python', 'odl.py', path, '-o', output_file]
+            odl = ['python', r'tools\odl.py', path, '-o', output_file]
             if obf: odl.extend(['-s', obf])
             if all_kval: odl.append('-k')
             if all_data: odl.append('-d')
@@ -117,7 +117,7 @@ def run_tool(args):
                 ['cd', path],
                 ['copy', "$I*", new_folder],
                 ['cd', defaultpath()],
-                [r'.\RBCmd.exe', '-d', new_folder, '--csv', temp_directory]
+                [r'tools\RBCmd.exe', '-d', new_folder, '--csv', temp_directory]
             ]
 
         runParsers(commands, temp_directory, output_path, path, tool)
