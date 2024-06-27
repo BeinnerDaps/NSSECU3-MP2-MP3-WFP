@@ -1,0 +1,21 @@
+# This CITATION.cff file was generated with cffinit.
+# Visit https://bit.ly/cffinit to generate yours today!
+
+cff-version: 1.2.0
+title: OneDrive
+message: >-
+  If you use this software, please cite it using the
+  metadata from this file.
+type: software
+authors:
+  - given-names: Yogesh
+    family-names: Khatri
+    email: yogesh@swiftforensics.com
+    affiliation: Champlain College
+identifiers:
+  - type: url
+    value: 'https://github.com/ydkhatri/OneDrive'
+    description: Github Page
+  - type: url
+    value: 'https://www.swiftforensics.com/'
+    description: Documentation Page
