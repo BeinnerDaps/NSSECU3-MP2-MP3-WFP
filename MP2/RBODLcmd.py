@@ -28,6 +28,24 @@ def run_as_admin():
         print(f"Failed to elevate to admin: {e}")
         sys.exit(1)
 
+def defaultpath():
+    return os.path.dirname(os.path.abspath(sys.argv[0]))
+
+def move_column_to_first(df, column_name):
+    if column_name in df.columns:
+        columns = [column_name] + [col for col in df.columns if col != column_name]
+        df = df[columns]
+    return df
+
+def make_unique_folder(base_path, folder_name):
+    new_folder = os.path.join(base_path, folder_name)
+    counter = 1
+    while os.path.exists(new_folder):
+        new_folder = os.path.join(base_path, f"{folder_name} ({counter})")
+        counter += 1
+    os.makedirs(new_folder)
+    return new_folder
+
 def readCSV(file, output_path, path, tool):
     """Reading CSV file for Parsing."""
     try:
@@ -95,16 +113,10 @@ def writeCSV(df, output_path, filename):
     except Exception as e:
         print(f"An error occurred on writeCSV: {e}")
 
-def move_column_to_first(df, column_name):
-    if column_name in df.columns:
-        columns = [column_name] + [col for col in df.columns if col != column_name]
-        df = df[columns]
-    return df
-
 def run_tool(args):
     tool, path, output_path, obf, all_kval, all_data = args
     try:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_csv:
+        with tempfile.NamedTemporaryFile(delete=True, suffix=".csv") as temp_csv:
             output_file = temp_csv.name
             temp_directory = os.path.dirname(output_file)
 
@@ -121,7 +133,6 @@ def run_tool(args):
             temp_directory = output_path
             try:
                 os.makedirs(new_folder)
-                print(f"Directory {new_folder} created successfully.")
             except OSError as error:
                 print(error)
 
@@ -133,7 +144,7 @@ def run_tool(args):
             ]
 
         runParsers(commands, temp_directory, output_path, path, tool)
-        if tool == 'rb': shutil.rmtree('RBMetaData')
+        if tool == 'rb': shutil.rmtree(new_folder)
     except Exception as e:
         print(f"An error occurred on run_tool: {e}")
 
@@ -163,9 +174,6 @@ def runParsers(commands, directory, output_path, path, tool):
         print(f"Command Subprocess Error on runParser: {e}")
     except Exception as e:
         print(f"An error occurred on runParser: {e}")
-
-def defaultpath():
-    return os.path.dirname(os.path.abspath(sys.argv[0]))
 
 def check_concurrencies(output_path):
     """Check for concurrent times in ODL and RB outputs and write to a CSV file."""
@@ -236,6 +244,7 @@ def main():
     tools = args.tool
     paths = args.path
     output_path = args.output_path or defaultpath()
+    output_path = make_unique_folder(output_path, 'Output')
     if not len(tools) == len(paths):
         parser.error('Both --tools and --paths must be provided with the same number of values.')
 
