@@ -77,7 +77,7 @@ def parseOdl(df_odl, output_path, path):
 def parseRb(df_rb, output_path, path):
     """Parsing RBCmd file."""
     try:
-        df_rb['UserSID'] = f'{path}'
+        df_rb['UserSID'] = os.path.basename(path)
         df_rb = move_column_to_first(df_rb, 'UserSID')
         df_rb = move_column_to_first(df_rb, 'DeletedOn')
         df_rb = df_rb.sort_values(by='DeletedOn', ascending=False)
@@ -90,12 +90,16 @@ def parseConcurrency(df_concurrency, output_path):
     try:
         if os.path.exists(df_concurrency):
             df = pd.read_csv(df_concurrency)
-            df['Timestamp'] = pd.to_datetime(df['Timestamp'])
+            df.rename(columns={'Filename': 'Logfile', 'FileName': 'FileLocation'}, inplace=True)
+            df.drop(['Timestamp', 'Code_File', 'Function', 'SourceName', 'FileType', 'rm_file'], axis=1, inplace=True)
+            for lst in ['Params_Decoded','Logfile','UserSID', 'FileLocation','FileSize', 'DeletedFile','DeletedOn']:
+                df = move_column_to_first(df, lst)
+            df['DeletedOn'] = pd.to_datetime(df['DeletedOn'])
             return writeCSV(df.copy(), output_path, 'Parsed_concurrency.xlsx')
         else:
             print(f"Concurrency CSV file not found at {df_concurrency}")
     except Exception as e:
-        print(f"An error occurred: {e}")
+        print(f"An error occurred on ParseConcurrency: {e}")
 
 def writeCSV(df, output_path, filename):
     """Writing RBCmd or ODL file."""
@@ -109,7 +113,7 @@ def writeCSV(df, output_path, filename):
                 colWidth = 100 if colWidth > 100 else colWidth
                 colIndex = df.columns.get_loc(col)
                 worksheet.set_column(colIndex, colIndex, colWidth)
-        print(f"DataFrame has been written to {output}")
+        print(f"{filename} DataFrame has been written to {output}")
     except Exception as e:
         print(f"An error occurred on writeCSV: {e}")
 
@@ -126,6 +130,7 @@ def run_tool(args):
             if all_kval: odl.append('-k')
             if all_data: odl.append('-d')
             commands = [odl]
+            print(f'Running tool: odl.py')
 
         if tool == 'rb':
             path = os.path.join(r"C:\$Recycle.Bin", path)
@@ -142,6 +147,7 @@ def run_tool(args):
                 ['cd', defaultpath()],
                 [r'tools\RBCmd.exe', '-d', new_folder, '--csv', temp_directory]
             ]
+            print(f'Running tool: RBCmd.exe')
 
         runParsers(commands, temp_directory, output_path, path, tool)
         if tool == 'rb': shutil.rmtree(new_folder)
@@ -152,7 +158,6 @@ def runParsers(commands, directory, output_path, path, tool):
     """runs the given commands with Subprocesses"""
     try:
         for command in commands:
-            print(f'Running command: {" ".join(command)}')
             if command[0] == 'cd':
                 os.chdir(command[1])
             else:
@@ -188,25 +193,16 @@ def checkConcurrencies(output_path):
             df_odl['Timestamp'] = pd.to_datetime(df_odl['Timestamp'])
             df_rb['DeletedOn'] = pd.to_datetime(df_rb['DeletedOn'])
 
-            concurrencies = []
-            with tqdm(total=len(df_odl), desc="Checking concurrencies") as pbar:
-                for idx, timestamp in enumerate(df_odl['Timestamp']):
-                    if timestamp in df_rb['DeletedOn'].values:
-                        concurrencies.append(df_odl.iloc[idx])
-                    pbar.update(1)
+            df_odl['rm_file'] = df_odl['Params_Decoded'].str.extract(r'\\([^\\]+)\']')
+            df_rb['DeletedFile'] = df_rb['FileName'].str.extract(r'([^\\]+)$')
+            cc_df = pd.merge(df_odl, df_rb, left_on='rm_file', right_on='DeletedFile', how='inner')
+            cc_df = cc_df[cc_df['Params_Decoded'].str.contains("FILE_ACTION_REMOVED")]
 
-            if concurrencies:
-                cc_df = pd.DataFrame(concurrencies)
-                # Filter rows based on Params_Decoded containing "FILE_ACTION_REMOVED"
-                cc_df = cc_df[cc_df['Params_Decoded'].str.contains("FILE_ACTION_REMOVED")]
-
-                if not cc_df.empty:
-                    concurrency_file = os.path.join(output_path, 'concurrency.csv')
-                    cc_df.to_csv(concurrency_file, index=False)
-                    parseConcurrency(concurrency_file, output_path)
-                    deleteCCfile(concurrency_file)
-                else:
-                    print("No concurrency found with 'FILE_ACTION_REMOVED' in Params_Decoded.")
+            if not cc_df.empty:
+                concurrency_file = os.path.join(output_path, 'concurrency.csv')
+                cc_df.to_csv(concurrency_file, index=False)
+                parseConcurrency(concurrency_file, output_path)
+                deleteCCfile(concurrency_file)
             else:
                 print("No concurrency found.")
         else:
@@ -219,7 +215,6 @@ def deleteCCfile(file_path):
     try:
         if os.path.exists(file_path):
             os.remove(file_path)
-            print(f"Deleted {file_path}")
         else:
             print(f"File {file_path} not found.")
     except Exception as e:
