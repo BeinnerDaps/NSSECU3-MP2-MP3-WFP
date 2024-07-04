@@ -175,7 +175,7 @@ def runParsers(commands, directory, output_path, path, tool):
     except Exception as e:
         print(f"An error occurred on runParser: {e}")
 
-def check_concurrencies(output_path):
+def checkConcurrencies(output_path):
     """Check for concurrent times in ODL and RB outputs and write to a CSV file."""
     odl_file = os.path.join(output_path, 'Parsed_odl.xlsx')
     rb_file = os.path.join(output_path, 'Parsed_rb.xlsx')
@@ -196,15 +196,15 @@ def check_concurrencies(output_path):
                     pbar.update(1)
 
             if concurrencies:
-                concurrencies_df = pd.DataFrame(concurrencies)
+                cc_df = pd.DataFrame(concurrencies)
                 # Filter rows based on Params_Decoded containing "FILE_ACTION_REMOVED"
-                concurrencies_df = concurrencies_df[concurrencies_df['Params_Decoded'].str.contains("FILE_ACTION_REMOVED")]
+                cc_df = cc_df[cc_df['Params_Decoded'].str.contains("FILE_ACTION_REMOVED")]
 
-                if not concurrencies_df.empty:
+                if not cc_df.empty:
                     concurrency_file = os.path.join(output_path, 'concurrency.csv')
-                    concurrencies_df.to_csv(concurrency_file, index=False)
+                    cc_df.to_csv(concurrency_file, index=False)
                     parseConcurrency(concurrency_file, output_path)
-                    delete_concurrency_file(concurrency_file)
+                    deleteCCfile(concurrency_file)
                 else:
                     print("No concurrency found with 'FILE_ACTION_REMOVED' in Params_Decoded.")
             else:
@@ -212,9 +212,9 @@ def check_concurrencies(output_path):
         else:
             print("Timestamp columns not found in one or both dataframes.")
     else:
-        print(f"One or both of the output files (Parsed_odl.xlsx or Parsed_rb.xlsx) do not exist in {output_path}.")
+        print(f"One or both of the output files do not exist in {output_path}.")
 
-def delete_concurrency_file(file_path):
+def deleteCCfile(file_path):
     """Delete the concurrency CSV file."""
     try:
         if os.path.exists(file_path):
@@ -238,7 +238,7 @@ def main():
     parser.add_argument('-s', '--obfstrmap', help='Path to ObfuscationStringMap.txt (if not in odl_folder)')
     parser.add_argument('-k', '--all_key_values', action='store_true', help='For repeated keys in ObfuscationMap, get all values | delimited (off by default)')
     parser.add_argument('-d', '--all_data', action='store_true', help='Show all data (off by default)')
-    parser.add_argument('-c', '--check', action='store_true', help='Run the concurrency check on the output directory')
+    parser.add_argument('-c', '--check', action='store_true', help='Run the concurrency check of both tools')
     args = parser.parse_args()
 
     tools = args.tool
@@ -258,7 +258,7 @@ def main():
     except Exception as e:
         print(f"An error occurred: {e}")
 
-    if args.check: check_concurrencies(output_path)
+    if args.check: checkConcurrencies(output_path)
 
 if __name__ == "__main__":
     main()
