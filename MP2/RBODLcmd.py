@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import argparse
+from concurrent.futures import ThreadPoolExecutor
 import subprocess
 import os
 import sys
@@ -35,10 +36,8 @@ def readCSV(file, output_path, path, tool):
         df.reset_index(drop=True, inplace=True)
         if tool == 'odl':
             return parseOdl(df.copy(), output_path, path)
-        elif tool == 'rbc':
-            return parseRbc(df.copy(), output_path, path)
-        elif tool == 'concurrency':
-            return parseConcurrency(df.copy(), output_path)
+        elif tool == 'rb':
+            return parseRb(df.copy(), output_path, path)
     except PermissionError as e:
         print(f"Permission Denied: {e}")
     except Exception as e:
@@ -57,14 +56,14 @@ def parseOdl(df_odl, output_path, path):
     except Exception as e:
         print(f"An error occurred: {e}")
 
-def parseRbc(df_rbc, output_path, path):
+def parseRb(df_rb, output_path, path):
     """Parsing RBCmd file."""
     try:
-        df_rbc['UserSID'] = f'{path}'
-        df_rbc = move_column_to_first(df_rbc, 'UserSID')
-        df_rbc = move_column_to_first(df_rbc, 'DeletedOn')
-        df_rbc = df_rbc.sort_values(by='DeletedOn', ascending=False)
-        return writeCSV(df_rbc.copy(), output_path, 'Parsed_rbc.xlsx')
+        df_rb['UserSID'] = f'{path}'
+        df_rb = move_column_to_first(df_rb, 'UserSID')
+        df_rb = move_column_to_first(df_rb, 'DeletedOn')
+        df_rb = df_rb.sort_values(by='DeletedOn', ascending=False)
+        return writeCSV(df_rb.copy(), output_path, 'Parsed_rb.xlsx')
     except Exception as e:
         print(f"An error occurred: {e}")
 
@@ -102,9 +101,10 @@ def move_column_to_first(df, column_name):
         df = df[columns]
     return df
 
-def run_tool(tool, path, output_path, obf=None, all_kval=None, all_data=None):
+def run_tool(args):
+    tool, path, output_path, obf, all_kval, all_data = args
     try:
-        with tempfile.NamedTemporaryFile(delete=True, suffix=".csv") as temp_csv:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".csv") as temp_csv:
             output_file = temp_csv.name
             temp_directory = os.path.dirname(output_file)
 
@@ -115,9 +115,9 @@ def run_tool(tool, path, output_path, obf=None, all_kval=None, all_data=None):
             if all_data: odl.append('-d')
             commands = [odl]
 
-        elif tool == 'rbc':
+        if tool == 'rb':
             path = os.path.join(r"C:\$Recycle.Bin", path)
-            new_folder = os.path.join(output_path, 'RBCMetaData')
+            new_folder = os.path.join(output_path, 'RBMetaData')
             temp_directory = output_path
             try:
                 os.makedirs(new_folder)
@@ -133,11 +133,12 @@ def run_tool(tool, path, output_path, obf=None, all_kval=None, all_data=None):
             ]
 
         runParsers(commands, temp_directory, output_path, path, tool)
-        if tool == 'rbc': shutil.rmtree('RBCMetaData')
+        if tool == 'rb': shutil.rmtree('RBMetaData')
     except Exception as e:
         print(f"An error occurred on run_tool: {e}")
 
 def runParsers(commands, directory, output_path, path, tool):
+    """runs the given commands with Subprocesses"""
     try:
         for command in commands:
             print(f'Running command: {" ".join(command)}')
@@ -169,7 +170,7 @@ def defaultpath():
 def check_concurrencies(output_path):
     """Check for concurrent times in ODL and RB outputs and write to a CSV file."""
     odl_file = os.path.join(output_path, 'Parsed_odl.xlsx')
-    rb_file = os.path.join(output_path, 'Parsed_rbc.xlsx')
+    rb_file = os.path.join(output_path, 'Parsed_rb.xlsx')
 
     if os.path.exists(odl_file) and os.path.exists(rb_file):
         df_odl = pd.read_excel(odl_file)
@@ -178,7 +179,7 @@ def check_concurrencies(output_path):
         if 'Timestamp' in df_odl.columns and 'DeletedOn' in df_rb.columns:
             df_odl['Timestamp'] = pd.to_datetime(df_odl['Timestamp'])
             df_rb['DeletedOn'] = pd.to_datetime(df_rb['DeletedOn'])
-            
+
             concurrencies = []
             with tqdm(total=len(df_odl), desc="Checking concurrencies") as pbar:
                 for idx, timestamp in enumerate(df_odl['Timestamp']):
@@ -203,7 +204,7 @@ def check_concurrencies(output_path):
         else:
             print("Timestamp columns not found in one or both dataframes.")
     else:
-        print(f"One or both of the output files (Parsed_odl.xlsx or Parsed_rbc.xlsx) do not exist in {output_path}.")
+        print(f"One or both of the output files (Parsed_odl.xlsx or Parsed_rb.xlsx) do not exist in {output_path}.")
 
 def delete_concurrency_file(file_path):
     """Delete the concurrency CSV file."""
@@ -223,25 +224,32 @@ def main():
         return
 
     parser = argparse.ArgumentParser(description="Wrapper script to run odl.py or RBCmd.exe")
-    parser.add_argument('-t', '--tool', choices=['odl', 'rbc'], nargs='+', help='Tool to run (odl, rbc)', required=True)
-    parser.add_argument('-p', '--path', metavar=('path1', 'path2'), nargs=2, help='Paths for tool1 and tool2 respectively', required=True)
-    parser.add_argument('-o', '--output_path', help='Path to output', default=None)
+    parser.add_argument('-t', '--tool', metavar=('tool1', 'tool2'), nargs='*', help='Specify which tool to run: odl (odl.py), rb (RBCmd.exe)', choices=['odl','rb'])
+    parser.add_argument('-p', '--path', metavar=('path1', 'path2'), nargs='*', help='Path to .odl logs folder for odl or user SID for rb')
+    parser.add_argument('-o', '--output_path', help='Path to output')
     parser.add_argument('-s', '--obfstrmap', help='Path to ObfuscationStringMap.txt (if not in odl_folder)')
     parser.add_argument('-k', '--all_key_values', action='store_true', help='For repeated keys in ObfuscationMap, get all values | delimited (off by default)')
     parser.add_argument('-d', '--all_data', action='store_true', help='Show all data (off by default)')
-    parser.add_argument('--check', action='store_true', help='Run the concurrency check on the output directory')
+    parser.add_argument('-c', '--check', action='store_true', help='Run the concurrency check on the output directory')
     args = parser.parse_args()
 
+    tools = args.tool
+    paths = args.path
     output_path = args.output_path or defaultpath()
+    if not len(tools) == len(paths):
+        parser.error('Both --tools and --paths must be provided with the same number of values.')
+
+    arguments = []
+    for tool, path in zip(tools, paths):
+        arguments.append([tool, path, output_path, args.obfstrmap, args.all_key_values, args.all_data])
 
     try:
-        for tool, path in zip(args.tool, args.path):
-            run_tool(tool, path, output_path, args.obfstrmap, args.all_key_values, args.all_data)
-
-        if args.check:
-            check_concurrencies(output_path)
+        with ThreadPoolExecutor() as executor:
+            list(tqdm(executor.map(run_tool, arguments), total=len(arguments), desc="Processing files"))
     except Exception as e:
         print(f"An error occurred: {e}")
+
+    if args.check: check_concurrencies(output_path)
 
 if __name__ == "__main__":
     main()
