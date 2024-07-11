@@ -87,19 +87,43 @@ def parseRb(df_rb, output_path, path):
 
 def parseConcurrency(df_concurrency, output_path):
     """Parsing concurrency CSV file."""
-    try:
-        if os.path.exists(df_concurrency):
-            df = pd.read_csv(df_concurrency)
-            df.rename(columns={'Filename': 'Logfile', 'FileName': 'FileLocation'}, inplace=True)
-            df.drop(['Timestamp', 'Code_File', 'Function', 'SourceName', 'FileType', 'rm_file'], axis=1, inplace=True)
-            for lst in ['Params_Decoded','Logfile','UserSID', 'FileLocation','FileSize', 'DeletedFile','DeletedOn']:
-                df = move_column_to_first(df, lst)
-            df['DeletedOn'] = pd.to_datetime(df['DeletedOn'])
-            return writeCSV(df.copy(), output_path, 'Parsed_concurrency.xlsx')
-        else:
-            print(f"Concurrency CSV file not found at {df_concurrency}")
-    except Exception as e:
-        print(f"An error occurred on ParseConcurrency: {e}")
+    odl_file = os.path.join(output_path, 'Parsed_odl.xlsx')
+    rb_file = os.path.join(output_path, 'Parsed_rb.xlsx')
+    output = os.path.join(output_path, 'Parsed_concurrency.xlsx')
+
+    if os.path.exists(odl_file) and os.path.exists(rb_file):
+        df_odl = pd.read_excel(odl_file)
+        df_rb = pd.read_excel(rb_file)
+
+        try:
+            if os.path.exists(df_concurrency):
+                df = pd.read_csv(df_concurrency)
+                df.rename(columns={'Filename': 'Logfile', 'FileName': 'FileLocation'}, inplace=True)
+                df.drop(['Timestamp', 'Code_File', 'Function', 'SourceName', 'FileType', 'rm_file'], axis=1, inplace=True)
+
+                for lst in ['Params_Decoded', 'Logfile', 'UserSID', 'FileLocation', 'FileSize', 'DeletedFile', 'DeletedOn']:
+                    df = move_column_to_first(df, lst)
+
+                df['DeletedOn'] = pd.to_datetime(df['DeletedOn'])
+
+                with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+                    df_odl.to_excel(writer, index=False, sheet_name='ODL_Parsed')
+                    df_rb.to_excel(writer, index=False, sheet_name='RB_Parsed')
+                    df.to_excel(writer, index=False, sheet_name='Concurrency_Parsed')
+                    for sheet_name in writer.sheets:
+                        worksheet = writer.sheets[sheet_name]
+                        for col in df:
+                            col_width = max(df[col].astype(str).map(len).max(), len(col))
+                            col_width = min(col_width, 100)  # Set a maximum width of 100
+                            col_index = df.columns.get_loc(col)
+                            worksheet.set_column(col_index, col_index, col_width)
+                return output
+            else:
+                print(f"Concurrency CSV file not found at {df_concurrency}")
+        except Exception as e:
+            print(f"An error occurred in parseConcurrency: {e}")
+    else:
+        print("Parsed ODL or RB files are missing.")
 
 def writeCSV(df, output_path, filename):
     """Writing RBCmd or ODL file."""
@@ -180,6 +204,7 @@ def runParsers(commands, directory, output_path, path, tool):
     except Exception as e:
         print(f"An error occurred on runParser: {e}")
 
+
 def checkConcurrencies(output_path):
     """Check for concurrent times in ODL and RB outputs and write to a CSV file."""
     odl_file = os.path.join(output_path, 'Parsed_odl.xlsx')
@@ -201,14 +226,16 @@ def checkConcurrencies(output_path):
             if not cc_df.empty:
                 concurrency_file = os.path.join(output_path, 'concurrency.csv')
                 cc_df.to_csv(concurrency_file, index=False)
-                parseConcurrency(concurrency_file, output_path)
-                deleteCCfile(concurrency_file)
             else:
                 print("No concurrency found.")
         else:
             print("Timestamp columns not found in one or both dataframes.")
     else:
         print(f"One or both of the output files do not exist in {output_path}.")
+
+    parseConcurrency(os.path.join(output_path, 'concurrency.csv'), output_path)
+    deleteCCfile(concurrency_file)
+
 
 def deleteCCfile(file_path):
     """Delete the concurrency CSV file."""
