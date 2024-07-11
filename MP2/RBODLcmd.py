@@ -23,21 +23,24 @@ def run_as_admin():
     script = os.path.abspath(sys.argv[0])
     params = ' '.join([f'"{arg}"' for arg in sys.argv[1:]])
     try:
-        subprocess.run(["runas", "/user:Administrator", f'python {script} {params}'], check=True)
+        subprocess.run(["runas","/user:Administrator", f'python {script} {params}'],check=True)
     except subprocess.CalledProcessError as e:
         print(f"Failed to elevate to admin: {e}")
         sys.exit(1)
 
 def defaultpath():
+    """Return the default path"""
     return os.path.dirname(os.path.abspath(sys.argv[0]))
 
 def move_column_to_first(df, column_name):
+    """Move specified column to first column index."""
     if column_name in df.columns:
         columns = [column_name] + [col for col in df.columns if col != column_name]
         df = df[columns]
     return df
 
 def make_unique_folder(base_path, folder_name):
+    """Checks if existing folder exist and make a new one."""
     new_folder = os.path.join(base_path, folder_name)
     counter = 1
     while os.path.exists(new_folder):
@@ -67,7 +70,7 @@ def parseOdl(df_odl, output_path, path):
         df_odl.drop(['File_Index'], axis=1, inplace=True)
         df_odl['Filename'] = df_odl['Filename'].apply(lambda x: os.path.join(path, x))
         df_odl['Timestamp'] = df_odl['Timestamp'].str.split('.').str[0]
-        df_odl['Function'] = df_odl['Function'].str.replace(r'(?<!^)(?=[A-Z])', ' ', regex=True).str.replace('::', ' -')
+        df_odl['Function'] = df_odl['Function'].str.replace(r'(?<!^)(?=[A-Z])',' ', regex=True).str.replace('::',' -')
         df_odl = move_column_to_first(df_odl, 'Timestamp')
         df_odl = df_odl.sort_values(by='Timestamp', ascending=False)
         return writeCSV(df_odl.copy(), output_path, 'Parsed_odl.xlsx')
@@ -87,43 +90,42 @@ def parseRb(df_rb, output_path, path):
 
 def parseConcurrency(df_concurrency, output_path):
     """Parsing concurrency CSV file."""
-    odl_file = os.path.join(output_path, 'Parsed_odl.xlsx')
-    rb_file = os.path.join(output_path, 'Parsed_rb.xlsx')
-    output = os.path.join(output_path, 'Parsed_concurrency.xlsx')
+    try:
+        odl_file = os.path.join(output_path, 'Parsed_odl.xlsx')
+        rb_file = os.path.join(output_path, 'Parsed_rb.xlsx')
+        output = os.path.join(output_path, 'Parsed_concurrency.xlsx')
+        merged_cc = os.path.join(output_path, 'RawMergedDataset.xlsx')
 
-    if os.path.exists(odl_file) and os.path.exists(rb_file):
-        df_odl = pd.read_excel(odl_file)
-        df_rb = pd.read_excel(rb_file)
+        if os.path.exists(odl_file) and os.path.exists(rb_file):
+            df_odl = pd.read_excel(odl_file)
+            df_rb = pd.read_excel(rb_file)
+            df_merged = pd.read_excel(merged_cc)
 
-        try:
             if os.path.exists(df_concurrency):
-                df = pd.read_csv(df_concurrency)
-                df.rename(columns={'Filename': 'Logfile', 'FileName': 'FileLocation'}, inplace=True)
-                df.drop(['Timestamp', 'Code_File', 'Function', 'SourceName', 'FileType', 'rm_file'], axis=1, inplace=True)
+                cc_df = pd.read_csv(df_concurrency)
+                cc_df.rename(columns={'Filename': 'Logfile', 'FileName': 'FileLocation'}, inplace=True)
+                cc_df.drop(['Timestamp','Code_File','Function','SourceName','FileType','rm_file'], axis=1,inplace=True)
+                for lst in ['Params_Decoded','Logfile','UserSID','FileLocation','FileSize','DeletedFile','DeletedOn']:
+                    cc_df = move_column_to_first(cc_df, lst)
+                cc_df['DeletedOn'] = pd.to_datetime(cc_df['DeletedOn'])
 
-                for lst in ['Params_Decoded', 'Logfile', 'UserSID', 'FileLocation', 'FileSize', 'DeletedFile', 'DeletedOn']:
-                    df = move_column_to_first(df, lst)
-
-                df['DeletedOn'] = pd.to_datetime(df['DeletedOn'])
-
+                dfs = [cc_df, df_odl, df_rb, df_merged]
+                dfnames = ['Concurrency_Parsed','ODL_Parsed','RB_Parsed','Raw_Merged']
                 with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-                    df_odl.to_excel(writer, index=False, sheet_name='ODL_Parsed')
-                    df_rb.to_excel(writer, index=False, sheet_name='RB_Parsed')
-                    df.to_excel(writer, index=False, sheet_name='Concurrency_Parsed')
-                    for sheet_name in writer.sheets:
-                        worksheet = writer.sheets[sheet_name]
-                        for col in df:
-                            col_width = max(df[col].astype(str).map(len).max(), len(col))
-                            col_width = min(col_width, 100)  # Set a maximum width of 100
-                            col_index = df.columns.get_loc(col)
-                            worksheet.set_column(col_index, col_index, col_width)
+                    for df, fname in zip(dfs, dfnames):
+                        df.to_excel(writer, index=False, sheet_name=fname)
+                        worksheet = writer.sheets[fname]
+                        for col_num, col in enumerate(df.columns):
+                            max_length = max(df[col].astype(str).map(len).max(),len(col))
+                            colWidth = min(max_length, 100)
+                            worksheet.set_column(col_num, col_num, colWidth)
                 return output
             else:
                 print(f"Concurrency CSV file not found at {df_concurrency}")
-        except Exception as e:
-            print(f"An error occurred in parseConcurrency: {e}")
-    else:
-        print("Parsed ODL or RB files are missing.")
+        else:
+            print("Parsed ODL or RB files are missing.")
+    except Exception as e:
+        print(f"An error occurred in parseConcurrency: {e}")
 
 def writeCSV(df, output_path, filename):
     """Writing RBCmd or ODL file."""
@@ -132,16 +134,16 @@ def writeCSV(df, output_path, filename):
         with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
             df.to_excel(writer, index=False, sheet_name='Parsed')
             worksheet = writer.sheets['Parsed']
-            for col in df:
-                colWidth = max(df[col].astype(str).map(len).max(), len(col))
-                colWidth = 100 if colWidth > 100 else colWidth
-                colIndex = df.columns.get_loc(col)
-                worksheet.set_column(colIndex, colIndex, colWidth)
+            for col_num, col in enumerate(df.columns):
+                max_length = max(df[col].astype(str).map(len).max(), len(col))
+                colWidth = min(max_length, 100)
+                worksheet.set_column(col_num, col_num, colWidth)
         print(f"{filename} DataFrame has been written to {output}")
     except Exception as e:
         print(f"An error occurred on writeCSV: {e}")
 
-def run_tool(args):
+def runTool(args):
+    """Running RBCmd or ODL tool."""
     tool, path, output_path, obf, all_kval, all_data = args
     try:
         with tempfile.NamedTemporaryFile(delete=True, suffix=".csv") as temp_csv:
@@ -179,7 +181,7 @@ def run_tool(args):
         print(f"An error occurred on run_tool: {e}")
 
 def runParsers(commands, directory, output_path, path, tool):
-    """runs the given commands with Subprocesses"""
+    """Runs the given commands with Subprocesses"""
     try:
         for command in commands:
             if command[0] == 'cd':
@@ -221,6 +223,7 @@ def checkConcurrencies(output_path):
             df_odl['rm_file'] = df_odl['Params_Decoded'].str.extract(r'\\([^\\]+)\']')
             df_rb['DeletedFile'] = df_rb['FileName'].str.extract(r'([^\\]+)$')
             cc_df = pd.merge(df_odl, df_rb, left_on='rm_file', right_on='DeletedFile', how='inner')
+            writeCSV(cc_df.copy(), output_path, "RawMergedDataset.xlsx")
             cc_df = cc_df[cc_df['Params_Decoded'].str.contains("FILE_ACTION_REMOVED")]
 
             if not cc_df.empty:
@@ -248,6 +251,20 @@ def deleteCCfile(file_path):
         print(f"Error deleting file {file_path}: {e}")
 
 def main():
+    """
+    NSSECU3 group 12 Windows Forensics Practical project
+
+    -t <tool>, 	--tool 		        - Specify which tool, choices: odl (odl.py) and/or rbc (RBCmd.exe)
+    -p <path>,	--path 		        - Path to ODL logs or Recycle Bin UserSID
+    -o <path>, 	--output_path 	    - Path to output directory
+    -s , 	    --obfstrmap	        - (ODL only) Path to ObfuscationStringMap.txt or general.keynote if not in odl_folder (off by default)
+    -k , 	    --all_kval 	        - (ODL only) For repeated keys in ObfuscationMap, get all values | delimited (off by default)
+    -d , 	    --all_data 	        - (ODL only) Show all data (off by default)
+
+    (Note: If '--output_path' is not given, default directory will be exe directory)
+    (Note: To get UserSID, refer to https://www.precysec.com/post/how-to-recover-deleted-files-windows-recycle-bin-forensics)
+    """
+
     if not is_admin():
         print("Not running as admin, attempting to relaunch with admin privileges...")
         run_as_admin()
@@ -276,7 +293,7 @@ def main():
 
     try:
         with ThreadPoolExecutor() as executor:
-            list(tqdm(executor.map(run_tool, arguments), total=len(arguments), desc="Processing files"))
+            list(tqdm(executor.map(runTool, arguments), total=len(arguments), desc="Processing files"))
     except Exception as e:
         print(f"An error occurred: {e}")
 
