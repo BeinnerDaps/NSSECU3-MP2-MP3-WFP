@@ -1,5 +1,5 @@
 # NSSECU3_Git
-NSSECU3 group 12 project folder
+A Python-based digital forensics tool that collects deleted artifacts that are both present in the OneDrive logs and Recycle Bin Metadata. This project combines Eric Zimmerman's RBCmd: Windows Recycle Bin artifact parser and Yogesh Khatri's Onedrive .odl parser.
 
 python 3.7+
 
